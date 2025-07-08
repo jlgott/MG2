@@ -8,3 +8,4 @@ wheels/
 
 .venv
 PF_tt_og.py
+.env
