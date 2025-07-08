@@ -6,5 +6,5 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
 .venv
+PF_tt_og.py
