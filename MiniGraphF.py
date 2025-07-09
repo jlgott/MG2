@@ -4,7 +4,6 @@ import socket
 import time  # noqa: F401
 from copy import deepcopy # noqa: F401
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
-
 from pydantic import BaseModel
 
 # --- Define the State ---
@@ -47,30 +46,33 @@ class FunctionalFlow:
         return None
 
     def initial_state(self, state: State):
+        if not isinstance(state, (dict, BaseModel)):
+            raise TypeError(
+                f"Initial state must be a dict or Pydantic BaseModel, not {type(state).__name__}"
+            )
         self.state = state
 
     def _copy_state(self, state: State) -> State:
         if isinstance(state, BaseModel):
             return state.model_copy(deep=True)
-        return deepcopy(state)
+        elif isinstance(state, dict):
+            return deepcopy(state)
+        raise TypeError(f"Unsupported state type for copying: {type(state)}")
+
 
     def _merge_states(self, states: List[Any]) -> State:
-        # Unwrap (state, next_step) tuples if needed
         if isinstance(states[0], tuple):
             states = [s[0] for s in states]
 
-        # Use custom merge if provided
         if self.custom_merge:
             return self.custom_merge(states)
 
-        # Merge Pydantic models
         if isinstance(states[0], BaseModel):
             base = states[0].model_copy(deep=True)
             for s in states[1:]:
                 base = base.model_copy(update=s.model_dump(exclude_unset=True))
             return base
 
-        # Merge dicts with collision safety
         if isinstance(states[0], dict):
             merged = {}
             for s in states:
@@ -100,16 +102,17 @@ class FunctionalFlow:
         async def wrapper(state: State) -> StepResult:
             for attempt in range(retries):
                 try:
+                    local_state = self._copy_state(state)
                     if timeout:
                         new_state, _ = await asyncio.wait_for(
-                            func(state), timeout=timeout
+                            func(local_state), timeout=timeout
                         )
                     else:
-                        new_state, _ = await func(state)
+                        new_state, _ = await func(local_state)
                     return new_state, next_step_name
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     if ignore_timeout:
-                        return state, next_step_name
+                        return self._copy_state(state), next_step_name
                     if attempt == retries - 1:
                         raise
                 except Exception as e:
@@ -140,17 +143,18 @@ class FunctionalFlow:
         async def wrapper(state: State) -> StepResult:
             for attempt in range(retries):
                 try:
+                    local_state = self._copy_state(state)
                     if timeout:
                         new_state, branch = await asyncio.wait_for(
-                            func(state), timeout=timeout
+                            func(local_state), timeout=timeout
                         )
                     else:
-                        new_state, branch = await func(state)
+                        new_state, branch = await func(local_state)
                     next_step = case_map.get(branch)
                     return new_state, next_step
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     if ignore_timeout:
-                        return state, None
+                        return self._copy_state(state), None
                     if attempt == retries - 1:
                         raise
                 except Exception as e:
@@ -179,27 +183,25 @@ class FunctionalFlow:
 
         async def tracked_func(fn, label, input_state):
             try:
+                local_state = self._copy_state(input_state)
                 if timeout:
-                    result = await asyncio.wait_for(fn(input_state), timeout=timeout)
-                    if self.collector:
-                        self.collector((label, result, name, self.user_account, self.machine))
-                    return result
+                    result = await asyncio.wait_for(fn(local_state), timeout=timeout)
                 else:
-                    result = await fn(input_state)
-                    if self.collector:
-                        self.collector((label, result, name, self.user_account, self.machine))
-                    return result
+                    result = await fn(local_state)
+                if self.collector:
+                    self.collector((label, result, name, self.user_account, self.machine))
+                return result
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 if ignore_timeout:
                     if self.collector:
-                        self.collector((label + ":timeout_skipped", input_state, name, self.user_account, self.machine))
-                    return input_state
+                        self.collector((label + ":timeout_skipped", self._copy_state(input_state), name, self.user_account, self.machine))
+                    return self._copy_state(input_state)
                 raise
 
         async def parallel_step(state: State) -> StepResult:
             results = await asyncio.gather(
                 *(
-                    tracked_func(f, self._get_func_name(f), self._copy_state(state))
+                    tracked_func(f, self._get_func_name(f), state)
                     for f in funcs
                 )
             )

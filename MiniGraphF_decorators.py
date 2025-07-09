@@ -141,6 +141,7 @@ if __name__ == "__main__":
     print("\n")
 
     for event in collector.events:
-        print(
-            f"[TRACE @ {event['timestamp']:.3f}] from: {event['step_name']} → to: {event['next_step']}, state: {event['state']}"
-        )
+        print(event)
+    print("\n")
+
+    
