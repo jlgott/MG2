@@ -8,15 +8,15 @@ import asyncio
 
 def llm_node(
     *,
-    name: str = "DefaultAgent",
+    name: str = "DefaultAgentNode",
     prompt: str,
-    model: str = "gpt-4.1",
+    model: str = "gpt-4.1-mini",
     output_model: Optional[Type[BaseModel]] = None,
     tools: Optional[List[Callable]] = None,
     retries: int = 3,
     timeout: float = 20,
     collector = None
-):
+    ):
     def decorator(user_func: Callable):
         agent = Agent(
             name=name,
@@ -66,6 +66,8 @@ def llm_node(
     return decorator
 
 
+
+#* EXAMPLE USAGE ----------------------------
 class Transaction(BaseModel):
     date: str
     amount: float
@@ -76,7 +78,7 @@ class TxSummary(BaseModel):
     category: str
 
 @llm_node(
-    prompt="Summarize this transaction in one sentence. Apply some type of categorization as well: online, brick_n_mortar",
+    prompt="Summarize this transaction in one sentence. Apply some type of categorization as well: online or brick_n_mortar",
     model="gpt-4.1-nano",
     output_model=TxSummary,
 )
@@ -91,7 +93,7 @@ result = summarize(
 
 print(result)
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 
 # Sample transaction data
 df = pd.DataFrame([

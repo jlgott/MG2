@@ -50,15 +50,41 @@ class FunctionalFlow:
             return state.model_copy(deep=True)
         return state.copy()
 
-    def _merge_states(self, states: List[State]) -> State:
+    # def _merge_states(self, states: List[State]) -> State:
+    #     if self.custom_merge:
+    #         return self.custom_merge(states)
+    #     if isinstance(states[0], BaseModel):
+    #         merged = states[0].model_copy()
+    #         for s in states[1:]:
+    #             merged = merged.model_copy(update=s.model_dump(exclude_unset=True))
+    #         return merged
+    #     else:
+    #         merged = {}
+    #         for s in states:
+    #             for k, v in s.items():
+    #                 if k in merged and merged[k] != v:
+    #                     raise ValueError(f"Conflict on key '{k}': {merged[k]} != {v}")
+    #                 merged[k] = v
+    #         return merged
+
+    def _merge_states(self, states: List[Any]) -> State:
+        # Unwrap (state, next_step) tuples if needed
+        if isinstance(states[0], tuple):
+            states = [s[0] for s in states]
+
+        # Use custom merge if provided
         if self.custom_merge:
             return self.custom_merge(states)
+
+        # Merge Pydantic models
         if isinstance(states[0], BaseModel):
-            merged = states[0].model_copy()
+            base = states[0].model_copy(deep=True)
             for s in states[1:]:
-                merged = merged.model_copy(update=s.model_dump(exclude_unset=True))
-            return merged
-        else:
+                base = base.model_copy(update=s.model_dump(exclude_unset=True))
+            return base
+
+        # Merge dicts with collision safety
+        if isinstance(states[0], dict):
             merged = {}
             for s in states:
                 for k, v in s.items():
@@ -66,6 +92,8 @@ class FunctionalFlow:
                         raise ValueError(f"Conflict on key '{k}': {merged[k]} != {v}")
                     merged[k] = v
             return merged
+
+        raise TypeError("Unsupported state type for merging")
 
     def step(
         self,
