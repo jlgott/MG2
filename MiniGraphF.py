@@ -1,4 +1,6 @@
 import asyncio
+import os
+import socket
 import time  # noqa: F401
 from copy import deepcopy
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
@@ -235,6 +237,8 @@ class FunctionalFlow:
                 break
             self.state, current = await step(self.state)
             if self.enable_post and self.collector:
+                user = os.getlogin()  # Or: os.environ.get("USERNAME") or getpass.getuser()
+                machine = socket.gethostname()
                 self.collector(step.__name__, self.state, current)
 
 
@@ -259,3 +263,5 @@ class ListCollector:
                 "next_step": next_step,
             }
         )
+
+    

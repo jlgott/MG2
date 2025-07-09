@@ -1,10 +1,20 @@
 import asyncio
 import time  # noqa: F401
 from copy import deepcopy
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
-from typing import Callable, Dict, Optional, Union, List
-from MiniGraphF import FunctionalFlow, State, StepResult, FlowFunc
-from pydantic import BaseModel
+from typing import (  # noqa: F401, F811  # noqa: F401, F811
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+from pydantic import BaseModel  # noqa: F401
+
+from MiniGraphF import FlowFunc, FunctionalFlow, State, StepResult, ListCollector  # noqa: F401
 
 
 # --- Step Definitions ---
@@ -88,29 +98,6 @@ class MyState(BaseModel):
     category: str = ""
 
 
-# --- Simple Collector Example ---
-class ListCollector:
-    def __init__(self):
-        self.events: List[Dict[str, Any]] = []
-
-    def __call__(self, step_name: str, state: State, next_step: Optional[str]):
-        # Defensive copy
-        timestamp = time.time()
-        snapshot = (
-            state.model_copy(deep=True)
-            if isinstance(state, BaseModel)
-            else deepcopy(state)
-        )
-        self.events.append(
-            {
-                "timestamp": timestamp,
-                "step_name": step_name,
-                "state": snapshot,
-                "next_step": next_step,
-            }
-        )
-
-
 # --- Run the Flow ---
 if __name__ == "__main__":
     collector = ListCollector()
@@ -143,6 +130,7 @@ if __name__ == "__main__":
     asyncio.run(flow.run())
 
     for event in collector.events:
-        print(
-            f"[TRACE @ {event['timestamp']:.3f}] from: {event['step_name']} → to: {event['next_step']}, state: {event['state']}"
-        )
+        # print(
+        #     f"[TRACE @ {event['timestamp']:.3f}] from: {event['step_name']} -> to: {event['next_step']}, state: {event['state']}"
+        # )
+        print(event)
