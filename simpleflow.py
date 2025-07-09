@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from pydantic import BaseModel
 
 State = Union[Dict[str, Any], BaseModel]
@@ -18,6 +18,10 @@ class SimpleFlow:
             return state.copy()
         else:
             raise TypeError("Unsupported state type")
+
+    def _post(self, label: str, state: State):
+        # Stub for future logging or instrumentation
+        pass
 
     def _merge_states(self, base: State, updates: List[State]) -> State:
         if isinstance(base, BaseModel):
@@ -38,10 +42,9 @@ class SimpleFlow:
             for attempt in range(retries + 1):
                 try:
                     local = self._prep_state(state)
-                    if timeout:
-                        return await asyncio.wait_for(fn(local), timeout)
-                    else:
-                        return await fn(local)
+                    result = await asyncio.wait_for(fn(local), timeout) if timeout else await fn(local)
+                    self._post(fn.__name__, result)
+                    return result
                 except Exception:
                     if attempt == retries:
                         raise
@@ -56,12 +59,11 @@ class SimpleFlow:
             coros = []
             for fn in fns:
                 local = self._prep_state(base)
-                if timeout:
-                    coros.append(asyncio.wait_for(fn(local), timeout))
-                else:
-                    coros.append(fn(local))
+                coros.append(asyncio.wait_for(fn(local), timeout) if timeout else fn(local))
             results = await asyncio.gather(*coros)
-            return self._merge_states(base, results)
+            merged = self._merge_states(base, results)
+            self._post("parallel", merged)
+            return merged
 
         self.steps.append(parallel_step)
         return self
@@ -69,10 +71,7 @@ class SimpleFlow:
     def if_step(self, fn: StepFunc, branches: Dict[str, StepFunc], key: str, timeout: Optional[float] = None):
         async def conditional_step(state: State) -> State:
             local = self._prep_state(state)
-            if timeout:
-                result = await asyncio.wait_for(fn(local), timeout)
-            else:
-                result = await fn(local)
+            result = await asyncio.wait_for(fn(local), timeout) if timeout else await fn(local)
 
             if isinstance(result, BaseModel):
                 branch_key = getattr(result, key)
@@ -82,7 +81,10 @@ class SimpleFlow:
             branch_fn = branches.get(branch_key)
             if not branch_fn:
                 raise ValueError(f"No branch handler for key: {branch_key}")
-            return await branch_fn(result)
+
+            final = await branch_fn(result)
+            self._post(f"if_step:{branch_key}", final)
+            return final
 
         self.steps.append(conditional_step)
         return self
