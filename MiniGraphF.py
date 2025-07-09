@@ -2,7 +2,7 @@ import asyncio
 import os
 import socket
 import time  # noqa: F401
-from copy import deepcopy
+from copy import deepcopy # noqa: F401
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ class FunctionalFlow:
         default_backoff: float = 0.0,
         default_timeout: Optional[float] = None,
         enable_post: bool = True,
-        collector: Optional[Callable[[str, State, Optional[str]], None]] = None,
+        collector: Optional[Callable[[Tuple], None]] = None,
     ):
         self.steps: Dict[str, FlowFunc] = {}
         self.start: str = ""
@@ -33,6 +33,8 @@ class FunctionalFlow:
         self.default_backoff = default_backoff
         self.default_timeout = default_timeout
         self.custom_merge: Optional[Callable[[List[State]], State]] = None
+        self.user_account = os.getlogin()
+        self.machine = socket.gethostname()
 
     def set_default_timeout(self, timeout: float):
         self.default_timeout = timeout
@@ -50,24 +52,7 @@ class FunctionalFlow:
     def _copy_state(self, state: State) -> State:
         if isinstance(state, BaseModel):
             return state.model_copy(deep=True)
-        return state.copy()
-
-    # def _merge_states(self, states: List[State]) -> State:
-    #     if self.custom_merge:
-    #         return self.custom_merge(states)
-    #     if isinstance(states[0], BaseModel):
-    #         merged = states[0].model_copy()
-    #         for s in states[1:]:
-    #             merged = merged.model_copy(update=s.model_dump(exclude_unset=True))
-    #         return merged
-    #     else:
-    #         merged = {}
-    #         for s in states:
-    #             for k, v in s.items():
-    #                 if k in merged and merged[k] != v:
-    #                     raise ValueError(f"Conflict on key '{k}': {merged[k]} != {v}")
-    #                 merged[k] = v
-    #         return merged
+        return deepcopy(state)
 
     def _merge_states(self, states: List[Any]) -> State:
         # Unwrap (state, next_step) tuples if needed
@@ -197,17 +182,17 @@ class FunctionalFlow:
                 if timeout:
                     result = await asyncio.wait_for(fn(input_state), timeout=timeout)
                     if self.collector:
-                        self.collector(label, result, name)
+                        self.collector((label, result, name, self.user_account, self.machine))
                     return result
                 else:
                     result = await fn(input_state)
                     if self.collector:
-                        self.collector(label, result, name)
+                        self.collector((label, result, name, self.user_account, self.machine))
                     return result
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 if ignore_timeout:
                     if self.collector:
-                        self.collector(label + ":timeout_skipped", input_state, name)
+                        self.collector((label + ":timeout_skipped", input_state, name, self.user_account, self.machine))
                     return input_state
                 raise
 
@@ -237,31 +222,12 @@ class FunctionalFlow:
                 break
             self.state, current = await step(self.state)
             if self.enable_post and self.collector:
-                user = os.getlogin()  # Or: os.environ.get("USERNAME") or getpass.getuser()
-                machine = socket.gethostname()
-                self.collector(step.__name__, self.state, current)
+                self.collector((step.__name__, self.state, current, self.user_account, self.machine))
 
 
-# --- Simple Collector Example ---
 class ListCollector:
     def __init__(self):
-        self.events: List[Dict[str, Any]] = []
+        self.events: List[tuple] = []
 
-    def __call__(self, step_name: str, state: State, next_step: Optional[str]):
-        # Defensive copy
-        timestamp = time.time()
-        snapshot = (
-            state.model_copy(deep=True)
-            if isinstance(state, BaseModel)
-            else deepcopy(state)
-        )
-        self.events.append(
-            {
-                "timestamp": timestamp,
-                "step_name": step_name,
-                "state": snapshot,
-                "next_step": next_step,
-            }
-        )
-
-    
+    def __call__(self, event_tuple: Tuple):
+        self.events.append(event_tuple)

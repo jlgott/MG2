@@ -19,7 +19,7 @@ from MiniGraphF import FlowFunc, FunctionalFlow, State, StepResult, ListCollecto
 
 # --- Step Definitions ---
 async def setup(state: State) -> StepResult:
-    state.number = 8
+    state.number = -7
     return state, "parallel_start"
 
 
@@ -43,6 +43,7 @@ async def done(state: State) -> StepResult:
 async def call_barney(state: State) -> State:
     await asyncio.sleep(1.9)
     state.barney = "I'm Barney!"
+    # state.number = 990
     return state
 
 
@@ -130,7 +131,4 @@ if __name__ == "__main__":
     asyncio.run(flow.run())
 
     for event in collector.events:
-        # print(
-        #     f"[TRACE @ {event['timestamp']:.3f}] from: {event['step_name']} -> to: {event['next_step']}, state: {event['state']}"
-        # )
         print(event)
