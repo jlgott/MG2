@@ -2,8 +2,10 @@ import asyncio
 import os
 import socket
 import time  # noqa: F401
-from copy import deepcopy # noqa: F401
+from copy import deepcopy  # noqa: F401
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+
+import pandas as pd
 from pydantic import BaseModel
 
 # --- Define the State ---
@@ -59,8 +61,9 @@ class FunctionalFlow:
             return deepcopy(state)
         raise TypeError(f"Unsupported state type for copying: {type(state)}")
 
-
-    def _merge_states(self, states: List[Any]) -> State:
+    def _merge_states(
+        self, states: List[Any], base_state: Optional[State] = None
+    ) -> State:
         if isinstance(states[0], tuple):
             states = [s[0] for s in states]
 
@@ -74,12 +77,21 @@ class FunctionalFlow:
             return base
 
         if isinstance(states[0], dict):
-            merged = {}
+            base = base_state or {}
+            merged = dict(base)
+
             for s in states:
                 for k, v in s.items():
-                    if k in merged and merged[k] != v:
-                        raise ValueError(f"Conflict on key '{k}': {merged[k]} != {v}")
-                    merged[k] = v
+                    if k not in merged:
+                        merged[k] = v
+                    elif merged[k] != v:
+                        original = base.get(k)
+                        if merged[k] == original:
+                            merged[k] = v  # accept first real change
+                        elif v != original:
+                            raise ValueError(
+                                f"Conflict on key '{k}': '{merged[k]}' vs '{v}' (original: '{original}')"
+                            )
             return merged
 
         raise TypeError("Unsupported state type for merging")
@@ -189,23 +201,32 @@ class FunctionalFlow:
                 else:
                     result = await fn(local_state)
                 if self.collector:
-                    self.collector((label, result, name, self.user_account, self.machine))
+                    self.collector(
+                        (label, result, name, self.user_account, self.machine)
+                    )
                 return result
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 if ignore_timeout:
                     if self.collector:
-                        self.collector((label + ":timeout_skipped", self._copy_state(input_state), name, self.user_account, self.machine))
+                        self.collector(
+                            (
+                                label + ":timeout_skipped",
+                                self._copy_state(input_state),
+                                name,
+                                self.user_account,
+                                self.machine,
+                            )
+                        )
                     return self._copy_state(input_state)
                 raise
 
         async def parallel_step(state: State) -> StepResult:
+            base_state = self._copy_state(state)
+
             results = await asyncio.gather(
-                *(
-                    tracked_func(f, self._get_func_name(f), state)
-                    for f in funcs
-                )
+                *(tracked_func(f, self._get_func_name(f), state) for f in funcs)
             )
-            merged = self._merge_states(results)
+            merged = self._merge_states(results, base_state=base_state)
             return merged, next_step_name
 
         parallel_step.__name__ = name
@@ -224,12 +245,50 @@ class FunctionalFlow:
                 break
             self.state, current = await step(self.state)
             if self.enable_post and self.collector:
-                self.collector((step.__name__, self.state, current, self.user_account, self.machine))
+                self.collector(
+                    (
+                        step.__name__,
+                        self.state,
+                        current,
+                        self.user_account,
+                        self.machine,
+                    )
+                )
 
 
-class ListCollector:
+class ListCollector:  #* SIMPLE
     def __init__(self):
         self.events: List[tuple] = []
 
     def __call__(self, event_tuple: Tuple):
         self.events.append(event_tuple)
+
+
+# class ListCollector:
+#     def __init__(self):
+#         self.events: List[tuple] = []
+
+#     def summarize_value(self, val):
+#         if isinstance(val, pd.DataFrame):
+#             return {
+#                 "_type": "DataFrame",
+#                 "shape": val.shape,
+#                 "columns": list(val.columns),
+#                 "preview": val.head(2).to_dict(orient="records"),
+#             }
+#         return val
+
+#     def summarize_state(self, state):
+#         if isinstance(state, BaseModel):
+#             state_dict = state.model_dump()
+#         elif isinstance(state, dict):
+#             state_dict = state
+#         else:
+#             return state  # leave unknown objects as-is
+
+#         return {k: self.summarize_value(v) for k, v in state_dict.items()}
+
+#     def __call__(self, event_tuple: Tuple):
+#         label, state, step, user, machine = event_tuple
+#         summarized_state = self.summarize_state(state)
+#         self.events.append((label, summarized_state, step, user, machine))

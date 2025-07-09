@@ -74,11 +74,10 @@ class Transaction(BaseModel):
     merchant: str
 
 class TxSummary(BaseModel):
-    summary: str
     category: str
 
 @llm_node(
-    prompt="Summarize this transaction in one sentence. Apply some type of categorization as well: online or brick_n_mortar",
+    prompt="Apply some type of categorization to this transaction: online or brick_n_mortar",
     model="gpt-4.1-nano",
     output_model=TxSummary,
 )
