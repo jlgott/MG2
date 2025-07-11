@@ -9,8 +9,8 @@ State = Union[Dict[str, Any], BaseModel]
 StepFunc = Callable[[State], Union[State, Awaitable[State]]]
 
 
-EVENT_LOG = []
-EVENT_LOG_COUNTER = 0
+# EVENT_LOG = []
+# EVENT_LOG_COUNTER = 0
 
 
 class ConditionalTransition:
@@ -83,10 +83,10 @@ class Node:
         """Post-processing hook for logging/instrumentation"""
         # Default implementation - can be overridden by users if needed
 
-        global EVENT_LOG_COUNTER
-        event_to_add = (EVENT_LOG_COUNTER, result)
-        EVENT_LOG.append(event_to_add)
-        EVENT_LOG_COUNTER+=1
+        # global EVENT_LOG_COUNTER
+        # event_to_add = (EVENT_LOG_COUNTER, result)
+        # EVENT_LOG.append(event_to_add)
+        # EVENT_LOG_COUNTER+=1
 
         return result
 
@@ -171,6 +171,70 @@ class Flow:
         return current_state
 
 
+class ParallelNode(Node):
+   """Node that executes multiple flows in parallel and merges results"""
+   
+   def __init__(self, flows: List[Flow], merge_fn: Optional[Callable[[List[State]], State]] = None):
+        self.flows = flows
+        self.merge_fn = merge_fn
+        self.id = "parallel_node"
+        
+        # Initialize Node attributes that >> operator needs
+        self.default_edge: Optional[Node] = None
+        self.conditional_edges: Dict[Tuple[str, Any], Node] = {}
+        
+        # We don't have a function, so no need for func-related attributes
+   
+   def _copy_state(self, state: State) -> State:
+       """Create immutable copy of state for parallel execution"""
+       if isinstance(state, BaseModel):
+           return state.model_copy(deep=True)
+       elif isinstance(state, dict):
+           return copy.deepcopy(state)
+       else:
+           raise TypeError(f"Unsupported state type: {type(state)}. Must be Dict or BaseModel")
+   
+   def _default_merge(self, states: List[State]) -> State:
+       """Default merge function for parallel execution results"""
+       if not states:
+           raise ValueError("No states to merge")
+       
+       if isinstance(states[0], BaseModel):
+           # BaseModel merge
+           base = states[0].model_copy()
+           for state in states[1:]:
+               updates = {k: v for k, v in state.model_dump().items() 
+                         if v is not None and v != ""}
+               if updates:
+                   base = base.model_copy(update=updates)
+           return base
+       else:
+           # Dict merge
+           merged = copy.deepcopy(states[0])
+           for state in states[1:]:
+               for key, value in state.items():
+                   if value is not None and value != "":
+                       merged[key] = value
+           return merged
+   
+   async def execute(self, state: State) -> State:
+       """Execute all flows in parallel and merge results"""
+       if not self.flows:
+           raise ValueError("No flows to execute")
+       
+       # Create tasks for parallel execution
+       tasks = [flow.run(self._copy_state(state)) for flow in self.flows]
+       
+       # Run all flows in parallel
+       results = await asyncio.gather(*tasks)
+       
+       # Use custom merge function or default
+       merge_func = self.merge_fn or self._default_merge
+       return merge_func(results)
+
+
+
+
 # Example usage and testing
 if __name__ == "__main__":
     # Example functions
@@ -221,7 +285,7 @@ if __name__ == "__main__":
 
         print(f"Final result: {result}")
 
-        print(f"EL\n{EVENT_LOG}")
+        # print(f"EL\n{EVENT_LOG}")
 
     # Run example
     asyncio.run(main())
