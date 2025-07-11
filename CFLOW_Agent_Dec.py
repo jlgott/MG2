@@ -23,6 +23,7 @@ set_default_openai_api("chat_completions")
 """
 NOTES: 
 # TODO Need to figure out a way for ContextInjection here.  UserContext and RunContextWrapper
+# TODO Add Semaphore to the Agent gather...
 
 """
 
@@ -42,6 +43,7 @@ def call_LLM(
     tools=[],
     timeout: int = 30,
     max_turns: int = 3,
+    max_concurrent:int = 5,
     tracing_disabled: bool = False
     ):
     def decorator(user_func):
@@ -77,18 +79,18 @@ def call_LLM(
 
             async def parallel_llm(state: LLMState) -> LLMState:
                 agent = Agent(**state.agent_config)
-                tasks = []
-                for query in state.user_input:
-                    tasks.append(
-                        Runner.run(
+                semaphore = asyncio.Semaphore(max_concurrent)
+                
+                async def run_with_semaphore(query):
+                    async with semaphore:
+                        return await Runner.run(
                             agent,
                             query,
                             max_turns=max_turns,
-                            run_config= RunConfig(tracing_disabled=tracing_disabled),
+                            run_config=RunConfig(tracing_disabled=tracing_disabled),
                         )
-                    )
-
-                # results = await asyncio.gather(*tasks, timeout=timeout)
+                
+                tasks = [run_with_semaphore(query) for query in state.user_input]
                 results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
                 state.llm_responses = [r.final_output for r in results]
                 return state
