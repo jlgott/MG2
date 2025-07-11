@@ -127,6 +127,10 @@ def call_LLM(
 if __name__ == "__main__":
     print("\n")
 
+    class ParOutput(BaseModel):
+        model_output:str
+
+
     async def sequentials():
         ss = time.time()
 
@@ -134,7 +138,7 @@ if __name__ == "__main__":
         def single_query():
             return "What is the capital of France?"
 
-        @call_LLM(system_prompt="Be helpful and brief", name="seq2")
+        @call_LLM(system_prompt="Be helpful and brief", name="seq2", output_type=ParOutput)
         def single_query2():
             return "What is the capital of Spain?"
 
@@ -142,12 +146,17 @@ if __name__ == "__main__":
         result2 = await single_query2()
         print(f"Sequential Time: {time.time() - ss:.3f}")
         print(f"Results: {result1}, {result2}")
+        print(f"Sequential Time: {time.time() - ss:.3f}")
+        print(f"Result1 type: {type(result1)}")
+        print(f"Result2 type: {type(result2)}")
+        print(f"Result2.model_output: {result2.model_output}")
+        print(f"Results: {result1}, {result2}")
 
 
     async def par():
         sp = time.time()
 
-        @call_LLM(system_prompt="Be helpful and brief", name="parallel_test")
+        @call_LLM(system_prompt="Be helpful and brief", name="parallel_test", output_type=ParOutput)
         def multiple_queries():
             return ["What is the capital of France?", "What is the capital of Spain?"]
 
