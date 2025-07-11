@@ -15,21 +15,21 @@ if __name__ == "__main__":
     # Same processing functions for both demos
     async def process_a(state):
         print("Process A starting...")
-        await asyncio.sleep(2)
+        await asyncio.sleep(.5)
         print("Process A completed!")
         state["result_a"] = "data_from_a"
         return state
 
     async def process_b(state):
         print("Process B starting...")
-        await asyncio.sleep(1)
+        await asyncio.sleep(.4)
         print("Process B completed!")
         state["result_b"] = "data_from_b"
         return state
 
     async def process_c(state):
         print("Process C starting...")
-        await asyncio.sleep(3)
+        await asyncio.sleep(.6)
         print("Process C completed!")
         state["result_c"] = "data_from_c"
         return state
@@ -49,25 +49,24 @@ if __name__ == "__main__":
 
     parallel_node = ParallelNode([node_a, node_b, node_c])
 
+    initial_state = {
+        "input_data": "test_data",
+        "result_a": None,
+        "result_b": None, 
+        "result_c": None
+        }
 
 
     async def demo_sequential():
         print("=== Sequential Demo ===")
         start_time = time.time()
+        print(initial_state)
         
         sflow = Flow()
         sflow.set_start(start_node)
 
         start_node >> node_a >> node_b >> node_c >> end_node
         
-        # Initial state with placeholder fields
-        initial_state = {
-            "input_data": "test_data",
-            "result_a": None,
-            "result_b": None, 
-            "result_c": None
-        }
-
         result = await sflow.run(initial_state)
         print(result)
         print(f"Sequential took: {time.time() - start_time:.2f}s")  # Should be ~6s
@@ -76,21 +75,14 @@ if __name__ == "__main__":
     async def demo_parallel():
         print("=== Parallel Demo ===")
         start_time = time.time()
+        print(initial_state)
         
         pflow = Flow()
         pflow.set_start(pstart_node)
 
         pstart_node >> parallel_node
         parallel_node >> end_node
-        
-        # Initial state with placeholder fields
-        initial_state = {
-            "input_data": "test_data",
-            "result_a": None,
-            "result_b": None, 
-            "result_c": None
-        }
-        
+                
         result = await pflow.run(initial_state)
         print(result)
         print(f"Parallel took: {time.time() - start_time:.2f}s")   # Should be ~3s
@@ -99,8 +91,8 @@ if __name__ == "__main__":
 
 # Run both demos
 async def main():
-    await demo_sequential()
     await demo_parallel()
+    await demo_sequential()
     
 # Run example
 asyncio.run(main())
