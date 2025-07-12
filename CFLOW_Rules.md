@@ -5,7 +5,7 @@
 
 ## Function Flow Philosophy
 
-Function Flow applies **functional programming principles** to LLM system design:
+Function Flow applies **functional programming principles** to LLM system graph design:
 
 - **Pure Functions**: Each node is a pure function that takes state and returns state
 - **Automatic Immutability**: Framework handles deep copying - you just modify and return state
@@ -487,7 +487,7 @@ asyncio.run(main())
 ## Key Takeaways
 
 1. **State-First Design**: Plan your state fields before writing functions
-2. **Direct Modification**: Modify state directly - framework handles copying
+2. **Direct Modification**: Modify state directly - framework handles copying state to maintain immutability.
 3. **Control Fields**: Use state fields to control flow direction
 4. **Dict or BaseModel**: State must be one of these two types
 5. **Field-Based Routing**: Use conditional transitions on state fields

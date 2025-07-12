@@ -22,8 +22,7 @@ set_default_openai_api("chat_completions")
 
 """
 NOTES: 
-# TODO Need to figure out a way for ContextInjection here.  UserContext and RunContextWrapper
-# TODO Add Semaphore to the Agent gather...
+# TODO Need to figure out a way for ContextInjection here.  UserContext and RunContextWrapper for OpenAI Agent Class.
 
 """
 
@@ -46,7 +45,7 @@ def call_LLM(
     max_concurrent:int = 5,
     tracing_disabled: bool = False
     ):
-    def decorator(user_func):
+    def fn_decorator(user_func):
         @functools.wraps(user_func)
         async def wrapper(*args, **kwargs):
             # Get user queries
@@ -122,25 +121,25 @@ def call_LLM(
 
         return wrapper
 
-    return decorator
+    return fn_decorator
 
 
 # Example usage
 if __name__ == "__main__":
     print("\n")
 
-    class ParOutput(BaseModel):
+    class DemoOutput(BaseModel):
         model_output:str
 
 
-    async def sequentials():
+    async def sequential_example():
         ss = time.time()
 
         @call_LLM(system_prompt="Be helpful and brief", name="seq1")
         def single_query():
             return "What is the capital of France?"
 
-        @call_LLM(system_prompt="Be helpful and brief", name="seq2", output_type=ParOutput)
+        @call_LLM(system_prompt="Be helpful and brief", name="seq2", output_type=DemoOutput)
         def single_query2():
             return "What is the capital of Spain?"
 
@@ -148,17 +147,15 @@ if __name__ == "__main__":
         result2 = await single_query2()
         print(f"Sequential Time: {time.time() - ss:.3f}")
         print(f"Results: {result1}, {result2}")
-        print(f"Sequential Time: {time.time() - ss:.3f}")
         print(f"Result1 type: {type(result1)}")
         print(f"Result2 type: {type(result2)}")
-        print(f"Result2.model_output: {result2.model_output}")
-        print(f"Results: {result1}, {result2}")
 
 
-    async def par():
+
+    async def parallel_example():
         sp = time.time()
 
-        @call_LLM(system_prompt="Be helpful and brief", name="parallel_test", output_type=ParOutput)
+        @call_LLM(system_prompt="Be helpful and brief", name="parallel_test", output_type=DemoOutput)
         def multiple_queries():
             return ["What is the capital of France?", "What is the capital of Spain?"]
 
@@ -168,8 +165,8 @@ if __name__ == "__main__":
 
 
     async def test():
-        await sequentials()
+        await sequential_example()
         print("\n\n")
-        await par()
+        await parallel_example()
 
     asyncio.run(test())
